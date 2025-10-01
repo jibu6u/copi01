@@ -2,254 +2,86 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>WebXR 원추 이중 헬릭스 + 이미지 배경</title>
+<title>WebXR 꼬깔콘 모자 내부 이중 헬릭스 (오큘러스용)</title>
 <style>
-  :root{color-scheme:dark}
-  html,body{margin:0;height:100%;background:#222;font-family:system-ui,Segoe UI,Roboto,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
-  #ui{position:fixed;left:12px;top:12px;z-index:20;background:rgba(0,0,0,.72);color:#fff;padding:12px 14px;border-radius:14px;min-width:360px;backdrop-filter:blur(6px);box-shadow:0 8px 24px rgba(0,0,0,.35)}
-  #ui h3{margin:0 0 8px;font-size:16px}
-  #ui label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0}
-  #ui input[type="number"],#ui input[type="range"]{width:170px}
-  #row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
-  #status{opacity:.95;font-size:12px}
-  #pointsCanvas{position:fixed;right:12px;top:12px;width:min(36vw,420px);aspect-ratio:1/1;background:#111;border:1px solid #333;border-radius:12px}
-  #hint{position:fixed;right:16px;top:14px;color:#bbb;font-size:12px}
-  #imgUpload{margin:8px 0;}
-  #imgList{margin:8px 0;}
-  button{cursor:pointer;border-radius:10px;padding:8px 12px;border:1px solid #333;background:#181818;color:#fff}
-  button:disabled{opacity:.5;cursor:not-allowed}
+  html,body{margin:0;height:100%;background:#222;}
 </style>
 </head>
 <body>
-<div id="ui">
-  <h3>WebXR 원추 이중 헬릭스 + 이미지 배경</h3>
-  <div id="row">
-    <button id="startBtn">시작</button>
-    <button id="stopBtn">중지</button>
-    <button id="enterVR">VR 시작</button>
-  </div>
-  <label>라인 총 수(생성 후보) <input id="pool" type="number" min="200" max="4000" step="50" value="1200"></label>
-  <label>선택 수(A+B) <input id="pick" type="number" min="100" max="1200" step="10" value="200"></label>
-  <label>기본 반경(px) <input id="rangeR" type="range" min="60" max="900" step="5" value="300"></label>
-  <label>높이(m) <input id="height" type="range" min="2" max="8" step="0.1" value="4.0"></label>
-  <label>회전 속도 <input id="spin" type="range" min="0.0" max="8" step="0.1" value="2.4"></label>
-  <label>꼬임 주기 <input id="twist" type="range" min="80" max="1600" step="10" value="520"></label>
-  <label>기울기 오프셋(m) <input id="tilt" type="range" min="0.00" max="0.60" step="0.01" value="0.22"></label>
-  <label>색상 부드러움 <input id="smoothAlpha" type="range" min="0.01" max="0.5" step="0.01" value="0.14"></label>
-  <label>배경 회색(0~1) <input id="bgGray" type="range" min="0" max="1" step="0.01" value="0.2"></label>
-  <label>그라데이션 세기 <input id="bgGrad" type="range" min="0" max="3" step="0.01" value="1.0"></label>
-  <label>아펙스 거리(1~2m) <input id="apexDist" type="range" min="1" max="2" step="0.01" value="1.0"></label>
-  <div id="status">상태: 오른쪽 패널에서 점 7개를 찍어 시드를 만드세요.</div>
-  <div id="imgUpload">
-    <label>이미지 업로드 <input type="file" id="imgInput" multiple accept="image/*"></label>
-    <label>표시 시간(초) <input type="number" id="imgDuration" min="1" max="30" value="5"></label>
-    <label>페이드(초) <input type="number" id="imgFade" min="0.1" max="5" step="0.1" value="1"></label>
-    <button id="imgStart">이미지 순서대로 표시</button>
-  </div>
-  <div id="imgList"></div>
-</div>
-<canvas id="pointsCanvas"></canvas>
-<div id="hint">점 패널 — 클릭/터치(7개). VR에선 정면 보드 찍기</div>
 <script type="module">
-const pCanvas=document.getElementById('pointsCanvas');
-const pCtx=pCanvas.getContext('2d');
-let P_W=360,P_H=360; let points=[]; // {x,y}
-function resizePointCanvas(){
-  const rect=pCanvas.getBoundingClientRect();
-  const dpr=Math.max(1,window.devicePixelRatio||1);
-  pCanvas.width=Math.floor(rect.width*dpr);
-  pCanvas.height=Math.floor(rect.height*dpr);
-  P_W=pCanvas.width; P_H=pCanvas.height; drawPoints();
-}
-function drawPoints(){
-  pCtx.fillStyle='#0d0d0d'; pCtx.fillRect(0,0,P_W,P_H);
-  // grid
-  pCtx.strokeStyle='#1b1b1b'; pCtx.lineWidth=1;
-  for(let i=0;i<=10;i++){ const x=(P_W/10)*i,y=(P_H/10)*i; pCtx.beginPath(); pCtx.moveTo(x,0); pCtx.lineTo(x,P_H); pCtx.stroke(); pCtx.beginPath(); pCtx.moveTo(0,y); pCtx.lineTo(P_W,y); pCtx.stroke(); }
-  // polyline
-  if(points.length){
-    pCtx.fillStyle='#ffee66';
-    for(const p of points){ pCtx.beginPath(); pCtx.arc(p.x,p.y,8,0,Math.PI*2); pCtx.fill(); }
-    pCtx.strokeStyle='#ffeb3b'; pCtx.lineWidth=3; pCtx.beginPath(); pCtx.moveTo(points[0].x,points[0].y);
-    for(let i=1;i<points.length;i++) pCtx.lineTo(points[i].x,points[i].y);
-    if(points.length===7) pCtx.lineTo(points[0].x,points[0].y);
-    pCtx.stroke();
-  }
-}
-function addPointXY(clientX,clientY){
-  if(points.length>=7) return;
-  const rect=pCanvas.getBoundingClientRect(); const dpr=Math.max(1,window.devicePixelRatio||1);
-  const x=(clientX-rect.left)*dpr; const y=(clientY-rect.top)*dpr;
-  if(x<0||y<0||x>rect.width*dpr||y>rect.height*dpr) return;
-  points.push({x,y}); drawPoints(); ui.status.textContent=`상태: 점 ${points.length}/7`;
-}
-function handlePointer(e){ if(e.type==='pointerdown'||e.type==='mousedown'){ addPointXY(e.clientX,e.clientY); } else if(e.type==='touchstart'){ const t=e.changedTouches&&e.changedTouches[0]; if(t) addPointXY(t.clientX,t.clientY); } }
-
-pCanvas.addEventListener('pointerdown',handlePointer,{passive:true});
-pCanvas.addEventListener('mousedown',handlePointer,{passive:true});
-pCanvas.addEventListener('touchstart',e=>{e.preventDefault();handlePointer(e)},{passive:false});
-pCanvas.addEventListener('dblclick',()=>{points=[];drawPoints();ui.status.textContent='상태: 점 0/7';});
-window.addEventListener('resize',resizePointCanvas); resizePointCanvas();
-// 변수 중복 선언 제거 (이미 선언된 경우 생략)
-imgInput.addEventListener('change', (e) => {
-  uploadedImages = [];
-  imgList.innerHTML = '';
-  for (const file of e.target.files) {
-    const url = URL.createObjectURL(file);
-    uploadedImages.push(url);
-    const img = document.createElement('img');
-    img.src = url;
-    img.style.maxWidth = '80px';
-    img.style.margin = '4px';
-    imgList.appendChild(img);
-  }
-});
-function showImageSequence() {
-  if (!uploadedImages.length) return;
-  let idx = 0;
-  const duration = Math.max(1, Number(imgDuration.value) || 5);
-  const fade = Math.max(0.1, Number(imgFade.value) || 1);
-  function showNext() {
-    if (bgMesh) scene.remove(bgMesh);
-    const texLoader = new THREE.TextureLoader();
-    texLoader.load(uploadedImages[idx], (tex) => {
-      tex.encoding = THREE.sRGBEncoding;
-      tex.anisotropy = 4;
-      bgMesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(8, 8),
-        new THREE.MeshBasicMaterial({
-          map: tex,
-          transparent: true,
-          opacity: 0
-        })
-      );
-      bgMesh.position.set(0, 1.6, -4); // 카메라 앞쪽에 배치
-      scene.add(bgMesh);
-      // 페이드인
-      let t = 0;
-      function fadeIn() {
-        t += 0.04;
-        bgMesh.material.opacity = Math.min(1, t / fade);
-        if (bgMesh.material.opacity < 1) requestAnimationFrame(fadeIn);
-        else setTimeout(fadeOut, duration * 1000);
-      }
-      function fadeOut() {
-        t = fade;
-        function doFadeOut() {
-          t -= 0.04;
-          bgMesh.material.opacity = Math.max(0, t / fade);
-          if (bgMesh.material.opacity > 0) requestAnimationFrame(doFadeOut);
-          else {
-            scene.remove(bgMesh);
-            idx = (idx + 1) % uploadedImages.length;
-            setTimeout(showNext, 400);
-          }
-        }
-        doFadeOut();
-      }
-      fadeIn();
-    });
-  }
-  showNext();
-}
-imgStart.addEventListener('click', showImageSequence);
-function syncConesRootToCamera(){
-  const camPos=new THREE.Vector3();
-  camera.getWorldPosition(camPos);
-  conesRoot.position.copy(camPos);
-  conesRoot.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), new THREE.Vector3(0,1,0));
-}
-// 변수 중복 선언 제거 (이미 선언된 경우 생략)
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { VRButton } from "https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js";
-// ...existing code...
-// 이미지 업로드 및 표시 기능
-const imgInput = document.getElementById('imgInput');
-const imgList = document.getElementById('imgList');
-const imgStart = document.getElementById('imgStart');
-const imgDuration = document.getElementById('imgDuration');
-const imgFade = document.getElementById('imgFade');
-let uploadedImages = [];
-let bgMesh = null;
-imgInput.addEventListener('change', (e) => {
-  uploadedImages = [];
-  imgList.innerHTML = '';
-  for (const file of e.target.files) {
-    const url = URL.createObjectURL(file);
-    uploadedImages.push(url);
-    const img = document.createElement('img');
-    img.src = url;
-    img.style.maxWidth = '80px';
-    img.style.margin = '4px';
-    imgList.appendChild(img);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x222222);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 100);
+camera.position.set(0, 0.2, 0.0); // 원추 내부 바닥(넓은 부분)
+camera.lookAt(0, 4.0, 0); // 꼭지점(막힌 부분)을 바라봄
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+const light = new THREE.AmbientLight(0xffffff, 0.9);
+scene.add(light);
+document.body.appendChild(VRButton.createButton(renderer));
+// 다양한 색상 팔레트
+const palette = [0xffeb3b,0x44aaff,0xff6347,0x32cd32,0x00ff7f,0x9acd32,0xffff00,0xffd700,0xf0e68c,0x9370db,0x8a2be2,0xba55d3,0x1e90ff,0x87cefa,0xff4500];
+// 꼬깔콘 꼭지점(머리 위쪽) 막기 위한 원추 면 추가
+const coneHeight = 4.0;
+const coneRadius = 1.8;
+const coneGeom = new THREE.ConeGeometry(coneRadius, coneHeight, 120, 1, false); // 막힌 원추
+const coneMat = new THREE.MeshBasicMaterial({color:0x222222, side:THREE.BackSide, transparent:true, opacity:0.98});
+const coneMesh = new THREE.Mesh(coneGeom, coneMat);
+coneMesh.position.set(0, coneHeight/2, 0);
+scene.add(coneMesh);
+// 이중 헬릭스 라인 생성 (꼬깔 중심으로 몰림)
+const lineCount = 200;
+const seg = 220;
+for(let k=0;k<lineCount;k++){
+  // 시계방향(꼬깔 중심으로 올라감)
+  {
+    const geom = new THREE.BufferGeometry();
+    const pos = new Float32Array(seg*3);
+    const phase0 = k * (Math.PI*2/lineCount);
+    for(let i=0;i<seg;i++){
+      const y = i * (coneHeight/(seg-1)); // 바닥에서 꼭지점으로
+      const hNorm = 1.0 - y/coneHeight; // 꼭지점으로 몰림
+      const radius = coneRadius * hNorm;
+      const phase = (y/1.2)*Math.PI*2 + phase0;
+      pos[i*3+0] = Math.sin(phase) * radius;
+      pos[i*3+1] = y;
+      pos[i*3+2] = Math.cos(phase) * radius;
+    }
+    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.LineBasicMaterial({color:palette[k%palette.length]});
+    const line = new THREE.Line(geom, mat);
+    scene.add(line);
   }
-});
-function showImageSequence() {
-  if (!uploadedImages.length) return;
-  let idx = 0;
-  const duration = Math.max(1, Number(imgDuration.value) || 5);
-  const fade = Math.max(0.1, Number(imgFade.value) || 1);
-  function showNext() {
-    if (bgMesh) scene.remove(bgMesh);
-    const texLoader = new THREE.TextureLoader();
-    texLoader.load(uploadedImages[idx], (tex) => {
-      tex.encoding = THREE.sRGBEncoding;
-      tex.anisotropy = 4;
-      bgMesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(8, 8),
-        new THREE.MeshBasicMaterial({
-          map: tex,
-          transparent: true,
-          opacity: 0
-        })
-      );
-      bgMesh.position.set(0, 1.6, -4); // 카메라 앞쪽에 배치
-      scene.add(bgMesh);
-      // 페이드인
-      let t = 0;
-      function fadeIn() {
-        t += 0.04;
-        bgMesh.material.opacity = Math.min(1, t / fade);
-        if (bgMesh.material.opacity < 1) requestAnimationFrame(fadeIn);
-        else setTimeout(fadeOut, duration * 1000);
-      }
-      function fadeOut() {
-        t = fade;
-        function doFadeOut() {
-          t -= 0.04;
-          bgMesh.material.opacity = Math.max(0, t / fade);
-          if (bgMesh.material.opacity > 0) requestAnimationFrame(doFadeOut);
-          else {
-            scene.remove(bgMesh);
-            idx = (idx + 1) % uploadedImages.length;
-            setTimeout(showNext, 400);
-          }
-        }
-        doFadeOut();
-      }
-      fadeIn();
-    });
+  // 반시계방향(꼬깔 중심으로 올라감)
+  {
+    const geom = new THREE.BufferGeometry();
+    const pos = new Float32Array(seg*3);
+    const phase0 = k * (Math.PI*2/lineCount);
+    for(let i=0;i<seg;i++){
+      const y = i * (coneHeight/(seg-1));
+      const hNorm = 1.0 - y/coneHeight;
+      const radius = coneRadius * hNorm;
+      const phase = (y/1.2)*Math.PI*2 + phase0;
+      pos[i*3+0] = Math.sin(-phase) * radius;
+      pos[i*3+1] = y;
+      pos[i*3+2] = Math.cos(-phase) * radius;
+    }
+    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.LineBasicMaterial({color:palette[(k+7)%palette.length]});
+    const line = new THREE.Line(geom, mat);
+    scene.add(line);
   }
-  showNext();
 }
-imgStart.addEventListener('click', showImageSequence);
-// ...existing code...
-// 원추 내부에서 보는 방식(아펙스=카메라 위치, Y축=위쪽)
-function syncConesRootToCamera(){
-  const camPos=new THREE.Vector3();
-  camera.getWorldPosition(camPos);
-  conesRoot.position.copy(camPos);
-  conesRoot.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), new THREE.Vector3(0,1,0));
+function animate(){
+  renderer.setAnimationLoop(()=>{
+    renderer.render(scene, camera);
+  });
 }
-// ...existing code...
-// 배경 그레이 적용
-const bgGray=document.getElementById('bgGray');
-bgGray.addEventListener('input',()=>{
-  scene.background = new THREE.Color().setScalar(Math.max(0,Math.min(1,parseFloat(bgGray.value)||0.2)));
-});
-scene.background = new THREE.Color().setScalar(Math.max(0,Math.min(1,parseFloat(bgGray.value)||0.2)));
-// ...existing code...
+animate();
 </script>
 </body>
 </html>
