@@ -52,6 +52,115 @@
 <canvas id="pointsCanvas"></canvas>
 <div id="hint">점 패널 — 클릭/터치(7개). VR에선 정면 보드 찍기</div>
 <script type="module">
+const pCanvas=document.getElementById('pointsCanvas');
+const pCtx=pCanvas.getContext('2d');
+let P_W=360,P_H=360; let points=[]; // {x,y}
+function resizePointCanvas(){
+  const rect=pCanvas.getBoundingClientRect();
+  const dpr=Math.max(1,window.devicePixelRatio||1);
+  pCanvas.width=Math.floor(rect.width*dpr);
+  pCanvas.height=Math.floor(rect.height*dpr);
+  P_W=pCanvas.width; P_H=pCanvas.height; drawPoints();
+}
+function drawPoints(){
+  pCtx.fillStyle='#0d0d0d'; pCtx.fillRect(0,0,P_W,P_H);
+  // grid
+  pCtx.strokeStyle='#1b1b1b'; pCtx.lineWidth=1;
+  for(let i=0;i<=10;i++){ const x=(P_W/10)*i,y=(P_H/10)*i; pCtx.beginPath(); pCtx.moveTo(x,0); pCtx.lineTo(x,P_H); pCtx.stroke(); pCtx.beginPath(); pCtx.moveTo(0,y); pCtx.lineTo(P_W,y); pCtx.stroke(); }
+  // polyline
+  if(points.length){
+    pCtx.fillStyle='#ffee66';
+    for(const p of points){ pCtx.beginPath(); pCtx.arc(p.x,p.y,8,0,Math.PI*2); pCtx.fill(); }
+    pCtx.strokeStyle='#ffeb3b'; pCtx.lineWidth=3; pCtx.beginPath(); pCtx.moveTo(points[0].x,points[0].y);
+    for(let i=1;i<points.length;i++) pCtx.lineTo(points[i].x,points[i].y);
+    if(points.length===7) pCtx.lineTo(points[0].x,points[0].y);
+    pCtx.stroke();
+  }
+}
+function addPointXY(clientX,clientY){
+  if(points.length>=7) return;
+  const rect=pCanvas.getBoundingClientRect(); const dpr=Math.max(1,window.devicePixelRatio||1);
+  const x=(clientX-rect.left)*dpr; const y=(clientY-rect.top)*dpr;
+  if(x<0||y<0||x>rect.width*dpr||y>rect.height*dpr) return;
+  points.push({x,y}); drawPoints(); ui.status.textContent=`상태: 점 ${points.length}/7`;
+}
+function handlePointer(e){ if(e.type==='pointerdown'||e.type==='mousedown'){ addPointXY(e.clientX,e.clientY); } else if(e.type==='touchstart'){ const t=e.changedTouches&&e.changedTouches[0]; if(t) addPointXY(t.clientX,t.clientY); } }
+
+pCanvas.addEventListener('pointerdown',handlePointer,{passive:true});
+pCanvas.addEventListener('mousedown',handlePointer,{passive:true});
+pCanvas.addEventListener('touchstart',e=>{e.preventDefault();handlePointer(e)},{passive:false});
+pCanvas.addEventListener('dblclick',()=>{points=[];drawPoints();ui.status.textContent='상태: 점 0/7';});
+window.addEventListener('resize',resizePointCanvas); resizePointCanvas();
+// 변수 중복 선언 제거 (이미 선언된 경우 생략)
+imgInput.addEventListener('change', (e) => {
+  uploadedImages = [];
+  imgList.innerHTML = '';
+  for (const file of e.target.files) {
+    const url = URL.createObjectURL(file);
+    uploadedImages.push(url);
+    const img = document.createElement('img');
+    img.src = url;
+    img.style.maxWidth = '80px';
+    img.style.margin = '4px';
+    imgList.appendChild(img);
+  }
+});
+function showImageSequence() {
+  if (!uploadedImages.length) return;
+  let idx = 0;
+  const duration = Math.max(1, Number(imgDuration.value) || 5);
+  const fade = Math.max(0.1, Number(imgFade.value) || 1);
+  function showNext() {
+    if (bgMesh) scene.remove(bgMesh);
+    const texLoader = new THREE.TextureLoader();
+    texLoader.load(uploadedImages[idx], (tex) => {
+      tex.encoding = THREE.sRGBEncoding;
+      tex.anisotropy = 4;
+      bgMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(8, 8),
+        new THREE.MeshBasicMaterial({
+          map: tex,
+          transparent: true,
+          opacity: 0
+        })
+      );
+      bgMesh.position.set(0, 1.6, -4); // 카메라 앞쪽에 배치
+      scene.add(bgMesh);
+      // 페이드인
+      let t = 0;
+      function fadeIn() {
+        t += 0.04;
+        bgMesh.material.opacity = Math.min(1, t / fade);
+        if (bgMesh.material.opacity < 1) requestAnimationFrame(fadeIn);
+        else setTimeout(fadeOut, duration * 1000);
+      }
+      function fadeOut() {
+        t = fade;
+        function doFadeOut() {
+          t -= 0.04;
+          bgMesh.material.opacity = Math.max(0, t / fade);
+          if (bgMesh.material.opacity > 0) requestAnimationFrame(doFadeOut);
+          else {
+            scene.remove(bgMesh);
+            idx = (idx + 1) % uploadedImages.length;
+            setTimeout(showNext, 400);
+          }
+        }
+        doFadeOut();
+      }
+      fadeIn();
+    });
+  }
+  showNext();
+}
+imgStart.addEventListener('click', showImageSequence);
+function syncConesRootToCamera(){
+  const camPos=new THREE.Vector3();
+  camera.getWorldPosition(camPos);
+  conesRoot.position.copy(camPos);
+  conesRoot.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), new THREE.Vector3(0,1,0));
+}
+// 변수 중복 선언 제거 (이미 선언된 경우 생략)
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { VRButton } from "https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js";
 // ...existing code...
